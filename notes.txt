@@ -1,0 +1,19 @@
+how to add firebase to get two (or more) guys walking around
+
+will need to refactor a little bit to get each image as a separate instance
+
+will the animations happen the same way for both?
+
+user A logs in. he gets a sprite, it's coordinates are updated by him and saved in firestore.
+
+we need a document that maps the data to the sprite.
+
+when user B logs in, a new sprite will get created on user A's screen when the doc appears in fb.
+
+will need the info for drawFrame. { sequenceFrame, direction, x, y }
+
+how to sync up the requestAnimationFrame with db requests?
+
+on firebase change -> drawFrame -> requestAnimationFrame
+
+the sprite has state, it doesn't animate itself, it knows its state, perhaps the current frame does go here
