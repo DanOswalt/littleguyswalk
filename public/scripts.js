@@ -7,10 +7,10 @@ class LittleGuy {
     this.currentDirection = opts.currentDirection || 0; 
     this.x = opts.x || 0;
     this.y = opts.y || 0;
+    this.currentSequenceIndex = opts.currentSequenceIndex || 0;
 
     // these are only updated on the client's machine
     this.sequence = [0, 1, 0, 2];
-    this.currentSequenceIndex = 0;
     this.imgSrc = opts.imgSrc || 'https://opengameart.org/sites/default/files/Green-Cap-Character-16x18.png';
     this.animationId = null;
   }
@@ -57,6 +57,7 @@ class CanvasCtrl {
     const self = this;
     const guys = {};
 
+    // animation sequence should not be part of the update
     db.collection("guys").onSnapshot(function(querySnapshot) {
       querySnapshot.forEach(function(doc) {
         console.log('update reflected')
@@ -69,10 +70,11 @@ class CanvasCtrl {
 
 
   update(guy) {
-    const { userId, currentDirection, isMoving, x, y} = guy;
+    const { userId, currentDirection, isMoving, currentSequenceIndex, x, y} = guy;
     const updateObject = {
       currentDirection,
       isMoving,
+      currentSequenceIndex,
       x,
       y
     }
