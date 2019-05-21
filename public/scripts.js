@@ -18,6 +18,7 @@ class LittleGuy {
 
 class CanvasCtrl {
   constructor() {
+    this.localUser = null;
     this.imgs = {};
     this.guys = [];
     this.canvas = document.querySelector('canvas');
@@ -34,8 +35,40 @@ class CanvasCtrl {
     };
   }
 
-  update(guy) {
+  // on open, get all guys from db
+  getAllGuys() {
     const self = this;
+    const guys = {};
+
+    db.collection("guys").get().then(function(querySnapshot) {
+      querySnapshot.forEach(function(doc) {
+          const guy = new LittleGuy(doc.data());
+          self.createNewSprite(guy);
+          guys[guy.userId] = guy;
+      });
+      self.guys = guys;
+    });
+
+    self.initListeners();
+  }
+
+  // listen for changes
+  initListeners() {
+    const self = this;
+    const guys = {};
+
+    db.collection("guys").onSnapshot(function(querySnapshot) {
+      querySnapshot.forEach(function(doc) {
+        console.log('update reflected')
+        const guy = new LittleGuy(doc.data());
+        guys[guy.userId] = guy;
+      });
+      self.guys = guys;
+    })
+  }
+
+
+  update(guy) {
     const { userId, currentDirection, isMoving, x, y} = guy;
     const updateObject = {
       currentDirection,
@@ -62,11 +95,12 @@ class CanvasCtrl {
 
   step(guy) {
     const self = this;
+    const localUser = self.guys[self.localUser]
 
     // update frame
     self.frameCount++;
   
-    // throttle animation so it doesn't go every frame
+    // throttle animation so it doesn't moveUserGuy every frame
     // this would be about 2 cycles per second (2 steps)
   
     if (self.frameCount < 8) {
@@ -81,7 +115,44 @@ class CanvasCtrl {
       guy.currentSequenceIndex = 0;
     }
   
-    // update coordinates
+    // render the next frame of the image
+    self.ctx.clearRect(0, 0, self.canvas.width, self.canvas.height);
+    // for each guy
+
+    for (let id in self.guys) {
+      const guy = self.guys[id];
+      self.drawFrame(self.imgs[guy.userId], 
+                     guy.sequence[guy.currentSequenceIndex], 
+                     guy.currentDirection, 
+                     guy.x, 
+                     guy.y);
+    }
+
+    if (localUser.isMoving) {
+      if (localUser.currentDirection === self.directions.LEFT) {  
+        localUser.x -= 4;
+      } else if (localUser.currentDirection === self.directions.UP) { 
+        localUser.y -= 4;
+      } else if (localUser.currentDirection === self.directions.RIGHT) { 
+        localUser.x += 4;
+      } else if (localUser.currentDirection === self.directions.DOWN) { 
+        localUser.y += 4;
+      }
+      self.update(guy);
+      window.requestAnimationFrame(() => { self.step(localUser) });
+    }
+  }
+  
+  drawFrame(img, frameX, frameY, canvasX, canvasY) {
+    this.ctx.drawImage(img,
+                  frameX * this.width, frameY * this.height, this.width, this.height,
+                  canvasX, canvasY, this.width, this.height);
+  }
+  
+  moveUserGuy(guy) {
+    const self = this;
+    guy.isMoving = true;
+
     if (guy.currentDirection === self.directions.LEFT) {  
       guy.x -= 4;
     } else if (guy.currentDirection === self.directions.UP) { 
@@ -94,42 +165,13 @@ class CanvasCtrl {
 
     // send update to db
     self.update(guy);
-  
-    // render the next frame of the image
-    self.ctx.clearRect(0, 0, self.canvas.width, self.canvas.height);
-    self.drawFrame(self.imgs[guy.userId], guy.sequence[guy.currentSequenceIndex], guy.currentDirection, guy.x, guy.y);
-
-    if (guy.isMoving) {
-      window.requestAnimationFrame(() => { self.step(guy) });
-    }
-  }
-  
-  stand(guy) {
-    guy.currentSequenceIndex= 1;
-    // send update to db
-    this.update(guy);
-
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.drawFrame(this.imgs[guy.userId], guy.sequence[guy.currentSequenceIndex], guy.currentDirection, guy.x, guy.y);
-  }
-  
-  drawFrame(img, frameX, frameY, canvasX, canvasY) {
-    this.ctx.drawImage(img,
-                  frameX * this.width, frameY * this.height, this.width, this.height,
-                  canvasX, canvasY, this.width, this.height);
-  }
-  
-  go(guy) {
-    const self = this;
-    guy.isMoving = true;
-    // send update to db
-    self.update(guy);
     guy.animationId = window.requestAnimationFrame(() => { self.step(guy) });
     console.log('start:', guy.animationId);
   }
   
-  stop(guy) {
+  haltUserGuy(guy) {
     guy.isMoving = false;
+    guy.currentSequenceIndex = 1; //standing position
     this.update(guy);
     console.log('cancel:', guy.animationId);
     window.cancelAnimationFrame(guy.animationId);
@@ -142,6 +184,7 @@ class CanvasCtrl {
 }
 
 firebase.auth().onAuthStateChanged(function(user) {
+  const self = this;
   if (user) {
     const uid = user.uid;
     const guy = new LittleGuy({ userId: uid });
@@ -156,7 +199,9 @@ firebase.auth().onAuthStateChanged(function(user) {
       console.log("Document successfully written!");
       window.Canvas = new CanvasCtrl();
       Canvas.guys.push(guy);
+      Canvas.localUser = guy.userId;
       Canvas.createNewSprite(guy);
+      Canvas.getAllGuys();
     })
     .catch(function(error) {
         console.error("Error writing document: ", error);
@@ -168,25 +213,29 @@ firebase.auth().onAuthStateChanged(function(user) {
 document.addEventListener('keydown', (e) => {
   e.preventDefault();
   const key = e.keyCode;
+  const userGuy = Canvas.guys[Canvas.localUser];
+
   Canvas.keysDown[key] = true;
 
-  if (Canvas.guys[0].isMoving || !(key >= 37 && key <= 40)) return;  
+  if (userGuy.isMoving || !(key >= 37 && key <= 40)) return;  
 
   if (Canvas.keysDown[37]) { 
-    Canvas.guys[0].currentDirection = Canvas.directions.LEFT; 
+    userGuy.currentDirection = Canvas.directions.LEFT; 
   } else if (Canvas.keysDown[38]) { 
-    Canvas.guys[0].currentDirection = Canvas.directions.UP;
+    userGuy.currentDirection = Canvas.directions.UP;
   } else if (Canvas.keysDown[39]) { 
-    Canvas.guys[0].currentDirection = Canvas.directions.RIGHT;
+    userGuy.currentDirection = Canvas.directions.RIGHT;
   } else if (Canvas.keysDown[40]) { 
-    Canvas.guys[0].currentDirection = Canvas.directions.DOWN;
+    userGuy.currentDirection = Canvas.directions.DOWN;
   }
 
-  Canvas.go(Canvas.guys[0]);
+  Canvas.moveUserGuy(userGuy);
 })
   
 document.addEventListener('keyup', (e) => {
   const key = e.keyCode;
+  const userGuy = Canvas.guys[Canvas.localUser];
+
   Canvas.keysDown[key] = false;
 
   if (!(key >= 37 && key <= 40)) {
@@ -198,5 +247,5 @@ document.addEventListener('keyup', (e) => {
       Canvas.keysDown[39] || 
       Canvas.keysDown[40]) return;
 
-  Canvas.stop(Canvas.guys[0]);
+  Canvas.haltUserGuy(userGuy);
 })
